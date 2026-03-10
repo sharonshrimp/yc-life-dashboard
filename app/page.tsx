@@ -81,6 +81,21 @@ export default function FitnessDashboard() {
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] pb-24 font-sans">
+      {/* --- 新增：大標題區塊 --- */}
+      <header className="pt-10 pb-2 px-6 max-w-md mx-auto">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-4xl font-black tracking-tighter text-slate-900">
+            PROJECT <span className="text-indigo-600">60D</span>
+          </h1>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 rounded">
+            v1.0 Precision
+          </span>
+        </div>
+        <p className="text-slate-500 text-xs font-medium mt-1 ml-1 uppercase tracking-tight opacity-70">
+          Fitness & Nutrition Intelligence Dashboard
+        </p>
+      </header>
+      
       {/* 頂部導航 */}
       <nav className="sticky top-0 z-50 bg-[#F8FAFC]/90 backdrop-blur-lg px-4 pt-6 pb-4">
         <div className="max-w-md mx-auto flex items-center justify-between bg-white rounded-[2.5rem] p-2 shadow-sm border border-slate-100">
