@@ -23,12 +23,17 @@ const categoryMap: { [key: string]: { icon: string, color: string } } = {
   "其他": { icon: "✨", color: "bg-slate-100 text-slate-600" },
 };
 
-// 輔助函數
 const formatDate = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const parseDateSafe = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  const d = new Date(dateStr.replace(/-/g, '/'));
+  return isNaN(d.getTime()) ? new Date() : d;
 };
 
 export default function MotionHub() {
@@ -66,12 +71,19 @@ export default function MotionHub() {
     const unsub = onSnapshot(doc(db, "trackers", "my-motion-tracker"), (docSnap) => {
       if (docSnap.exists()) setMotionData(docSnap.data());
       setLoading(false);
+    }, (err) => {
+      console.error("Firestore Error:", err);
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
   const syncData = async (newData: any) => {
-    await setDoc(doc(db, "trackers", "my-motion-tracker"), newData);
+    try {
+      await setDoc(doc(db, "trackers", "my-motion-tracker"), newData);
+    } catch (e) {
+      console.error("Firebase Sync Error:", e);
+    }
   };
 
   const dayData = motionData[selectedDate] || { exercises: [], plan: '', totalVolume: 0 };
@@ -106,7 +118,7 @@ export default function MotionHub() {
   };
 
   const startEdit = (ex: any) => {
-    setCategory(ex.category); 
+    setCategory(ex.category || '重訓'); 
     setExerciseName(ex.category === '網球' || ex.category === '其他' ? '' : ex.name);
     setWeight(ex.weight?.toString() || ''); setReps(ex.reps?.toString() || ''); setSetsCount(ex.setsCount?.toString() || '');
     setIncline(ex.incline || ''); setDuration(ex.duration || ''); setNote(ex.note || '');
@@ -126,7 +138,7 @@ export default function MotionHub() {
   );
 
   return (
-    <main className="bg-[#F8FAFC] text-slate-800 p-4 pb-24 font-sans w-full">
+    <main className="bg-[#F8FAFC] text-slate-800 p-4 pb-24 font-sans w-full animate-in fade-in duration-700">
       <div className="max-w-md mx-auto">
         
         {/* Header */}
@@ -146,13 +158,13 @@ export default function MotionHub() {
           <div className="flex justify-between items-center mb-5 px-1 relative z-10">
             <button onClick={() => changeWeek(-1)} className="w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full text-slate-300 hover:text-indigo-500">◀</button>
             <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              {new Date(currentWeek[0].replace(/-/g, '/')).getMonth() + 1}月紀錄週期
+              {parseDateSafe(currentWeek[0]).getMonth() + 1}月紀錄週期
             </span>
             <button onClick={() => changeWeek(1)} className="w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full text-slate-300 hover:text-indigo-500">▶</button>
           </div>
           <div className="space-y-1.5 relative z-10">
             {currentWeek.map((dateStr) => {
-              const d = new Date(dateStr.replace(/-/g, '/'));
+              const d = parseDateSafe(dateStr);
               const isSelected = dateStr === selectedDate;
               return (
                 <div key={dateStr} className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isSelected ? 'bg-indigo-50 shadow-inner' : 'hover:bg-slate-50/50'}`}>
@@ -164,7 +176,7 @@ export default function MotionHub() {
                     const newData = { ...motionData, [dateStr]: { ...(motionData[dateStr] || {}), plan: e.target.value } };
                     setMotionData(newData); syncData(newData);
                   }} />
-                  {motionData[dateStr]?.exercises?.length > 0 && <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>}
+                  {(motionData[dateStr]?.exercises?.length > 0) && <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>}
                 </div>
               );
             })}
@@ -175,7 +187,7 @@ export default function MotionHub() {
         <section className="bg-white rounded-[2.5rem] p-6 mb-6 shadow-sm border border-slate-100/50 border-t-4 border-t-indigo-500">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xs font-black text-slate-800 tracking-widest uppercase flex items-center gap-2">
-               <span className={`${categoryMap[category]?.color} p-1.5 rounded-lg text-sm`}>{categoryMap[category]?.icon}</span>
+               <span className={`${categoryMap[category]?.color || 'bg-slate-50'} p-1.5 rounded-lg text-sm`}>{categoryMap[category]?.icon || '✨'}</span>
                {editingId ? '編輯項目' : '新增項目'}
             </h3>
             <input type="date" className="bg-slate-50 text-[11px] font-black p-2.5 rounded-xl text-indigo-600 border border-slate-100 outline-none" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); resetForm(); }} />
@@ -236,19 +248,19 @@ export default function MotionHub() {
         <section className="space-y-3.5">
           <div className="flex justify-between px-4 items-center mb-2">
             <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic">{selectedDate} LOG</h3>
-            {dayData.totalVolume > 0 && <span className="text-[12px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full flex items-center gap-1.5"><Icons.BarChart /> {dayData.totalVolume?.toLocaleString()} KG</span>}
+            {(dayData?.totalVolume > 0) && <span className="text-[12px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full flex items-center gap-1.5 animate-in slide-in-from-right-4"><Icons.BarChart /> {dayData.totalVolume?.toLocaleString()} KG</span>}
           </div>
           
-          {dayData.exercises?.length === 0 ? (
+          {(!dayData?.exercises || dayData.exercises.length === 0) ? (
             <div className="text-center py-16 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[11px]">
-                尚未開始今日挑戰...
+               尚未開始今日挑戰...
             </div>
           ) : (
             dayData.exercises.map((ex: any) => (
               <div key={ex.id} onClick={() => startEdit(ex)} className="bg-white px-5 py-5 rounded-[1.8rem] shadow-sm border border-slate-100/70 flex justify-between items-center cursor-pointer hover:border-indigo-50 transition-all group">
                 <div className="flex-1 flex items-center gap-3.5">
-                   <div className={`${categoryMap[ex.category || '重訓']?.color} w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0`}>
-                      {categoryMap[ex.category || '重訓']?.icon}
+                   <div className={`${categoryMap[ex.category || '重訓']?.color || 'bg-slate-50'} w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0`}>
+                      {categoryMap[ex.category || '重訓']?.icon || '✨'}
                    </div>
                    <div>
                       <div className="flex items-center gap-2 mb-0.5">
@@ -258,13 +270,19 @@ export default function MotionHub() {
                         {ex.category === '重訓' && `${ex.weight}kg · ${ex.reps}r · ${ex.setsCount}組`}
                         {ex.category === '有氧' && `坡度: ${ex.incline}% · 時間: ${ex.duration}m`}
                         {ex.category === '伸展' && `次數: ${ex.reps} · 時間: ${ex.duration}`}
-                        {(ex.category === '網球' || ex.category === '其他') && ex.note?.substring(0,20)}
+                        {(ex.category === '網球' || ex.category === '其他') && (ex.note ? ex.note.substring(0, 20) + '...' : '')}
                       </div>
                    </div>
                 </div>
                 <div className="flex items-center gap-4 ml-2">
-                  {ex.category === '重訓' && <span className="text-sm font-black text-slate-600 tabular-nums">{ex.volume.toLocaleString()}</span>}
-                  <button onClick={(e) => { e.stopPropagation(); const updated = dayData.exercises.filter((item:any)=>item.id !== ex.id); const newData = {...motionData, [selectedDate]: {...dayData, exercises: updated, totalVolume: updated.reduce((a:number,b:any)=>a+(b.volume||0),0)}}; setMotionData(newData); syncData(newData); }} className="text-slate-200 hover:text-rose-400 p-2 rounded-lg transition-colors">
+                  {ex.category === '重訓' && <span className="text-sm font-black text-slate-600 tabular-nums">{ex.volume?.toLocaleString() || 0}</span>}
+                  <button onClick={(e) => { 
+                    e.stopPropagation(); 
+                    const updated = dayData.exercises.filter((item:any)=>item.id !== ex.id); 
+                    const totalVol = updated.reduce((a:number,b:any)=>a+(b.volume||0),0);
+                    const newData = {...motionData, [selectedDate]: {...dayData, exercises: updated, totalVolume: totalVol}}; 
+                    setMotionData(newData); syncData(newData); 
+                  }} className="text-slate-200 hover:text-rose-400 p-2 rounded-lg transition-colors">
                      <Icons.Trash />
                   </button>
                 </div>
