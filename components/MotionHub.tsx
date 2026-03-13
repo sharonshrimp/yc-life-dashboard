@@ -48,6 +48,7 @@ export default function MotionHub() {
   const [reps, setReps] = useState('');
   const [setsCount, setSetsCount] = useState('');
   const [incline, setIncline] = useState('');
+  const [speed, setSpeed] = useState('');
   const [duration, setDuration] = useState('');
   const [note, setNote] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -107,7 +108,7 @@ export default function MotionHub() {
       name: (category === '網球' || category === '其他') ? category : (exerciseName || category),
       category,
       weight: Number(weight) || 0, reps: Number(reps) || 0, setsCount: Number(setsCount) || 0,
-      incline: incline || '', duration: duration || '', note: note || '',
+      incline: incline || '', speed: speed || '', duration: duration || '', note: note || '',
       volume: vol
     };
     if (editingId) {
@@ -124,7 +125,7 @@ export default function MotionHub() {
 
   const resetForm = () => {
     setExerciseName(''); setWeight(''); setReps(''); setSetsCount(''); 
-    setIncline(''); setDuration(''); setNote('');
+    setIncline(''); setSpeed(''); setDuration(''); setNote('');
     setEditingId(null);
   };
 
@@ -132,7 +133,7 @@ export default function MotionHub() {
     setCategory(ex.category || '重訓'); 
     setExerciseName(ex.category === '網球' || ex.category === '其他' ? '' : ex.name);
     setWeight(ex.weight?.toString() || ''); setReps(ex.reps?.toString() || ''); setSetsCount(ex.setsCount?.toString() || '');
-    setIncline(ex.incline || ''); setDuration(ex.duration || ''); setNote(ex.note || '');
+    setIncline(ex.incline || ''); setSpeed(ex.speed || ''); setDuration(ex.duration || ''); setNote(ex.note || '');
     setEditingId(ex.id);
   };
 
@@ -199,7 +200,7 @@ export default function MotionHub() {
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xs font-black text-slate-800 tracking-widest uppercase flex items-center gap-2">
                <span className={`${categoryMap[category]?.color || 'bg-slate-50'} p-1.5 rounded-lg text-sm`}>{categoryMap[category]?.icon || '✨'}</span>
-               {editingId ? '編輯項目' : '新增項目'}
+               {editingId ? '編輯項目' : '運動內容'}
             </h3>
             <div className="flex items-center bg-slate-50 rounded-xl border border-slate-100 p-1 px-2 gap-1">
               <button onClick={() => shiftDate(-1)} className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-indigo-500 font-bold transition-colors">‹</button>
@@ -225,7 +226,7 @@ export default function MotionHub() {
           <div className="space-y-3.5">
             {category !== '網球' && category !== '其他' && (
               <div className="relative group">
-                <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none border border-slate-100 focus:bg-white transition-all pr-12" placeholder="動作名稱 (e.g., 臥推)" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} />
+                <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none border border-slate-100 focus:bg-white transition-all pr-12" placeholder="動作名稱" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} />
                 <button title="載入上次數據" className="absolute right-3.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white shadow-sm border border-slate-100 rounded-xl text-indigo-500 hover:bg-indigo-500 hover:text-white transition-all">
                    <Icons.Zap />
                 </button>
@@ -241,9 +242,19 @@ export default function MotionHub() {
             )}
 
             {category === '有氧' && (
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"><Icons.Scale /></span><input placeholder="坡度 %" className="w-full bg-slate-50 p-4 pl-10 rounded-2xl font-bold outline-none focus:bg-white" value={incline} onChange={(e) => setIncline(e.target.value)} /></div>
-                <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"><Icons.Clock /></span><input placeholder="時間 min" className="w-full bg-slate-50 p-4 pl-10 rounded-2xl font-bold outline-none focus:bg-white" value={duration} onChange={(e) => setDuration(e.target.value)} /></div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Scale /></span>
+                  <input placeholder="坡度 %" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={incline} onChange={(e) => setIncline(e.target.value)} />
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300">⚡</span>
+                  <input placeholder="速度" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={speed} onChange={(e) => setSpeed(e.target.value)} />
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Clock /></span>
+                  <input placeholder="時間 min" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={duration} onChange={(e) => setDuration(e.target.value)} />
+                </div>
               </div>
             )}
 
@@ -288,7 +299,7 @@ export default function MotionHub() {
                       </div>
                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1.5">
                         {ex.category === '重訓' && `${ex.weight}kg · ${ex.reps}r · ${ex.setsCount}組`}
-                        {ex.category === '有氧' && `坡度: ${ex.incline}% · 時間: ${ex.duration}m`}
+                        {ex.category === '有氧' && `坡度: ${ex.incline}% · 速度: ${ex.speed} · 時間: ${ex.duration}m`}
                         {ex.category === '伸展' && `次數: ${ex.reps} · 時間: ${ex.duration}`}
                         {(ex.category === '網球' || ex.category === '其他') && (ex.note ? ex.note.substring(0, 20) + '...' : '')}
                       </div>
