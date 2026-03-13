@@ -86,6 +86,17 @@ export default function MotionHub() {
     }
   };
 
+  const shiftDate = (offset: number) => {
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + offset);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    setSelectedDate(`${y}-${m}-${d}`);
+    resetForm();
+  };
+
   const dayData = motionData[selectedDate] || { exercises: [], plan: '', totalVolume: 0 };
 
   const saveExercise = () => {
@@ -190,7 +201,16 @@ export default function MotionHub() {
                <span className={`${categoryMap[category]?.color || 'bg-slate-50'} p-1.5 rounded-lg text-sm`}>{categoryMap[category]?.icon || '✨'}</span>
                {editingId ? '編輯項目' : '新增項目'}
             </h3>
-            <input type="date" className="bg-slate-50 text-[11px] font-black p-2.5 rounded-xl text-indigo-600 border border-slate-100 outline-none" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); resetForm(); }} />
+            <div className="flex items-center bg-slate-50 rounded-xl border border-slate-100 p-1 px-2 gap-1">
+              <button onClick={() => shiftDate(-1)} className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-indigo-500 font-bold transition-colors">‹</button>
+              <input 
+                type="date" 
+                className="bg-transparent text-[11px] font-black py-1.5 text-indigo-600 outline-none cursor-pointer" 
+                value={selectedDate} 
+                onChange={(e) => { setSelectedDate(e.target.value); resetForm(); }} 
+              />
+              <button onClick={() => shiftDate(1)} className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-indigo-500 font-bold transition-colors">›</button>
+            </div>
           </div>
 
           <div className="grid grid-cols-5 gap-1.5 mb-6">
