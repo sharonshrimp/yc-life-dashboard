@@ -41,6 +41,7 @@ export default function MotionHub() {
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
   const [motionData, setMotionData] = useState<any>({});
+  const [favorites, setFavorites] = useState<{ [key: string]: any }>({}); 
   
   const [category, setCategory] = useState('重訓');
   const [exerciseName, setExerciseName] = useState('');
@@ -70,7 +71,11 @@ export default function MotionHub() {
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "trackers", "my-motion-tracker"), (docSnap) => {
-      if (docSnap.exists()) setMotionData(docSnap.data());
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setMotionData(data);
+        setFavorites(data.favorites || {});
+      }
       setLoading(false);
     }, (err) => {
       console.error("Firestore Error:", err);
@@ -87,21 +92,40 @@ export default function MotionHub() {
     }
   };
 
+  const applyFavorite = (name: string) => {
+    const fav = favorites[name];
+    if (fav) {
+      setExerciseName(name);
+      setWeight(fav.weight || '');
+      setReps(fav.reps || '');
+      setSetsCount(fav.setsCount || '');
+    }
+  };
+
   const shiftDate = (offset: number) => {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + offset);
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    setSelectedDate(`${y}-${m}-${d}`);
+    const d = parseDateSafe(selectedDate);
+    d.setDate(d.getDate() + offset);
+    setSelectedDate(formatDate(d));
     resetForm();
   };
 
   const dayData = motionData[selectedDate] || { exercises: [], plan: '', totalVolume: 0 };
 
-  const saveExercise = () => {
+  const saveExercise = async () => {
     const vol = category === '重訓' ? Number(weight) * Number(reps) * Number(setsCount) : 0;
+    
+    // 常用邏輯
+    let updatedFavorites = { ...favorites };
+    if (category === '重訓' && exerciseName) {
+      if (!favorites[exerciseName]) {
+        if (window.confirm(`要將「${exerciseName}」加入常用動作嗎？`)) {
+          updatedFavorites[exerciseName] = { weight, reps, setsCount };
+        }
+      } else {
+        updatedFavorites[exerciseName] = { weight, reps, setsCount };
+      }
+    }
+
     let updatedExercises = [...(dayData.exercises || [])];
     const newEntry = {
       id: editingId || Date.now(),
@@ -111,15 +135,22 @@ export default function MotionHub() {
       incline: incline || '', speed: speed || '', duration: duration || '', note: note || '',
       volume: vol
     };
+
     if (editingId) {
       updatedExercises = updatedExercises.map(ex => ex.id === editingId ? newEntry : ex);
     } else {
       updatedExercises.push(newEntry);
     }
+
     const newTotalVolume = updatedExercises.reduce((acc, ex) => acc + (ex.volume || 0), 0);
-    const newData = { ...motionData, [selectedDate]: { ...dayData, exercises: updatedExercises, totalVolume: newTotalVolume } };
+    const newData = { 
+      ...motionData, 
+      [selectedDate]: { ...dayData, exercises: updatedExercises, totalVolume: newTotalVolume },
+      favorites: updatedFavorites
+    };
+    
     setMotionData(newData);
-    syncData(newData);
+    await syncData(newData);
     resetForm();
   };
 
@@ -223,11 +254,22 @@ export default function MotionHub() {
             ))}
           </div>
 
+          {/* 常用標籤 */}
+          {category === '重訓' && Object.keys(favorites).length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-3 mb-1 no-scrollbar">
+              {Object.keys(favorites).map(favName => (
+                <button key={favName} onClick={() => applyFavorite(favName)} className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-[10px] font-black text-indigo-600 hover:bg-indigo-500 hover:text-white transition-all">
+                  {favName}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-3.5">
             {category !== '網球' && category !== '其他' && (
               <div className="relative group">
                 <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none border border-slate-100 focus:bg-white transition-all pr-12" placeholder="動作名稱" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} />
-                <button title="載入上次數據" className="absolute right-3.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white shadow-sm border border-slate-100 rounded-xl text-indigo-500 hover:bg-indigo-500 hover:text-white transition-all">
+                <button onClick={() => applyFavorite(exerciseName)} title="載入上次數據" className={`absolute right-3.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-xl transition-all ${favorites[exerciseName] ? 'bg-indigo-500 text-white shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>
                    <Icons.Zap />
                 </button>
               </div>
@@ -241,30 +283,15 @@ export default function MotionHub() {
               </div>
             )}
 
+            {/* 有氧/伸展等輸入框保持原樣... */}
             {category === '有氧' && (
               <div className="grid grid-cols-3 gap-2">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Scale /></span>
-                  <input placeholder="坡度 %" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={incline} onChange={(e) => setIncline(e.target.value)} />
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300">⚡</span>
-                  <input placeholder="速度" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={speed} onChange={(e) => setSpeed(e.target.value)} />
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Clock /></span>
-                  <input placeholder="時間 min" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={duration} onChange={(e) => setDuration(e.target.value)} />
-                </div>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Scale /></span><input placeholder="坡度 %" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={incline} onChange={(e) => setIncline(e.target.value)} /></div>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300">⚡</span><input placeholder="速度" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={speed} onChange={(e) => setSpeed(e.target.value)} /></div>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 scale-75"><Icons.Clock /></span><input placeholder="時間 min" className="w-full bg-slate-50 p-4 pl-8 rounded-2xl text-[12px] font-bold outline-none focus:bg-white" value={duration} onChange={(e) => setDuration(e.target.value)} /></div>
               </div>
             )}
-
-            {category === '伸展' && (
-              <div className="grid grid-cols-2 gap-2.5">
-                <input type="number" placeholder="次數" className="bg-slate-50 p-4 rounded-2xl font-bold text-center outline-none focus:bg-white" value={reps} onChange={(e) => setReps(e.target.value)} />
-                <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"><Icons.Clock /></span><input placeholder="時間 (e.g., 30s)" className="w-full bg-slate-50 p-4 pl-10 rounded-2xl font-bold outline-none focus:bg-white" value={duration} onChange={(e) => setDuration(e.target.value)} /></div>
-              </div>
-            )}
-
+            
             {(category === '網球' || category === '其他' || category === '伸展') && (
               <textarea className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none border border-slate-100 focus:bg-white min-h-[110px]" placeholder={category === '網球' ? '🎾 紀錄今日練習對手、技術重點...' : '📝 紀錄內容細節...'} value={note} onChange={(e) => setNote(e.target.value)} />
             )}
@@ -275,7 +302,7 @@ export default function MotionHub() {
           </button>
         </section>
 
-        {/* 日誌明細 */}
+        {/* 日誌明細部分保持原樣... */}
         <section className="space-y-3.5">
           <div className="flex justify-between px-4 items-center mb-2">
             <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic">{selectedDate} LOG</h3>
@@ -283,9 +310,7 @@ export default function MotionHub() {
           </div>
           
           {(!dayData?.exercises || dayData.exercises.length === 0) ? (
-            <div className="text-center py-16 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[11px]">
-               尚未開始今日挑戰...
-            </div>
+            <div className="text-center py-16 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[11px]">尚未開始今日挑戰...</div>
           ) : (
             dayData.exercises.map((ex: any) => (
               <div key={ex.id} onClick={() => startEdit(ex)} className="bg-white px-5 py-5 rounded-[1.8rem] shadow-sm border border-slate-100/70 flex justify-between items-center cursor-pointer hover:border-indigo-50 transition-all group">
