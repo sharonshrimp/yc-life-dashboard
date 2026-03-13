@@ -167,9 +167,19 @@ export default function MacroTracker({ history, myFoods, selectedDate, onSync, s
   };
 
   const changeDate = (offset: number) => {
-    const date = new Date(selectedDate);
+    // 1. 使用「年, 月-1, 日」的方式拆解字串，避免 JS Date 預設 ISO 時區偏移
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
+    // 2. 增減天數
     date.setDate(date.getDate() + offset);
-    setSelectedDate(date.toLocaleDateString('en-CA'));
+    
+    // 3. 手動格式化為 YYYY-MM-DD，確保 input type="date" 絕對能識別
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    
+    setSelectedDate(`${y}-${m}-${d}`);
   };
 
   return (
