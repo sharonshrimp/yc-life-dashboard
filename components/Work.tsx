@@ -6,38 +6,41 @@ import { doc, setDoc, onSnapshot } from "firebase/firestore";
 
 // --- SVG Icons ---
 const Icons = {
-  Check: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>,
-  Clock: () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>,
-  Plus: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"></path></svg>,
+  Check: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>,
   Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>,
-  Target: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>,
+  Calendar: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>,
+  ChevronLeft: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>,
+  ChevronRight: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"></path></svg>,
 };
 
-const categoryMap: { [key: string]: { icon: string, color: string } } = {
-  "開發": { icon: "💻", color: "bg-indigo-50 text-indigo-600" },
-  "會議": { icon: "🤝", color: "bg-amber-50 text-amber-600" },
-  "行政": { icon: "📋", color: "bg-slate-100 text-slate-600" },
-  "學習": { icon: "📖", color: "bg-emerald-50 text-emerald-600" },
-  "緊急": { icon: "🚨", color: "bg-rose-50 text-rose-600" },
-};
-
-const formatDate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const typeMap: { [key: string]: { icon: string, color: string, badge: string } } = {
+  "緊急": { icon: "🚨", color: "bg-rose-50 text-rose-600", badge: "bg-rose-500" },
+  "會議": { icon: "👥", color: "bg-amber-50 text-amber-600", badge: "bg-amber-500" },
+  "其他": { icon: "📝", color: "bg-slate-50 text-slate-600", badge: "bg-slate-500" },
 };
 
 export default function WorkProgressHub() {
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
+  const [viewDate, setViewDate] = useState(new Date()); // 控制目前顯示哪一週
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [workData, setWorkData] = useState<any>({});
   
-  // 表單狀態
-  const [category, setCategory] = useState('開發');
+  const [type, setType] = useState('緊急');
   const [taskName, setTaskName] = useState('');
-  const [estTime, setEstTime] = useState('');
   const [note, setNote] = useState('');
+
+  // 1. 計算當前視圖的整週日期 (一到日)
+  const currentWeek = useMemo(() => {
+    const tempDate = new Date(viewDate);
+    const day = tempDate.getDay();
+    const diff = tempDate.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(tempDate.setDate(diff));
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.toISOString().split('T')[0];
+    });
+  }, [viewDate]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "trackers", "my-work-tracker"), (docSnap) => {
@@ -53,40 +56,18 @@ export default function WorkProgressHub() {
 
   const dayData = workData[selectedDate] || { tasks: [], plan: '' };
 
-  // 計算當日完成度
-  const stats = useMemo(() => {
-    const tasks = dayData.tasks || [];
-    if (tasks.length === 0) return { percent: 0, completed: 0, total: 0 };
-    const completed = tasks.filter((t: any) => t.completed).length;
-    return {
-      percent: Math.round((completed / tasks.length) * 100),
-      completed,
-      total: tasks.length
-    };
-  }, [dayData]);
-
   const saveTask = async () => {
     if (!taskName) return;
-    const newTask = {
-      id: Date.now(),
-      name: taskName,
-      category,
-      estTime: Number(estTime) || 0,
-      note,
-      completed: false,
-    };
-
+    const newTask = { id: Date.now(), name: taskName, type, note, completed: false };
     const updatedTasks = [...(dayData.tasks || []), newTask];
     const newData = { ...workData, [selectedDate]: { ...dayData, tasks: updatedTasks } };
     setWorkData(newData);
     await syncData(newData);
-    setTaskName(''); setEstTime(''); setNote('');
+    setTaskName(''); setNote('');
   };
 
   const toggleTask = async (taskId: number) => {
-    const updatedTasks = dayData.tasks.map((t: any) => 
-      t.id === taskId ? { ...t, completed: !t.completed } : t
-    );
+    const updatedTasks = dayData.tasks.map((t: any) => t.id === taskId ? { ...t, completed: !t.completed } : t);
     const newData = { ...workData, [selectedDate]: { ...dayData, tasks: updatedTasks } };
     setWorkData(newData);
     await syncData(newData);
@@ -99,114 +80,111 @@ export default function WorkProgressHub() {
     await syncData(newData);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-300 italic uppercase">Syncing Progress...</div>;
+  const shiftWeek = (offset: number) => {
+    const newDate = new Date(viewDate);
+    newDate.setDate(viewDate.getDate() + (offset * 7));
+    setViewDate(newDate);
+  };
+
+  const completionStats = useMemo(() => {
+    const tasks = dayData.tasks || [];
+    if (tasks.length === 0) return 0;
+    return Math.round((tasks.filter((t: any) => t.completed).length / tasks.length) * 100);
+  }, [dayData.tasks]);
+
+  if (loading) return <div className="p-10 text-center font-black text-slate-300">VELOCITY HUB LOADING...</div>;
 
   return (
-    <main className="bg-[#FBFBFE] min-h-screen text-slate-800 p-4 pb-20 font-sans">
+    <main className="bg-[#F8FAFC] min-h-screen p-4 pb-20 font-sans">
       <div className="max-w-md mx-auto">
         
-        {/* Header & Overall Progress */}
-        <header className="mb-8 pt-4">
-          <div className="flex justify-between items-end mb-6">
-            <div>
-              <h1 className="text-2xl font-black italic tracking-tighter uppercase leading-none mb-1">
-                Project <span className="text-indigo-600">Velocity</span>
-              </h1>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Efficiency tracking system</p>
-            </div>
-            <input 
-              type="date" 
-              className="bg-white border-none shadow-sm rounded-full px-4 py-2 text-[11px] font-black text-indigo-600 outline-none" 
-              value={selectedDate} 
-              onChange={(e) => setSelectedDate(e.target.value)} 
-            />
+        {/* Header */}
+        <header className="mb-6 flex justify-between items-center px-1">
+          <div>
+            <h1 className="text-xl font-black italic tracking-tighter uppercase">Velocity <span className="text-indigo-600">Hub</span></h1>
+            <p className="text-[9px] font-bold text-slate-400 tracking-widest uppercase">Work Progress Tracker</p>
           </div>
-
-          <div className="bg-white rounded-[2.5rem] p-6 shadow-xl shadow-indigo-100/20 border border-white flex items-center gap-6 relative overflow-hidden">
-            <div className="relative w-20 h-20 shrink-0">
-              <svg className="w-full h-full -rotate-90">
-                <circle cx="40" cy="40" r="36" fill="none" stroke="#F1F5F9" strokeWidth="8" />
-                <circle cx="40" cy="40" r="36" fill="none" stroke="url(#gradient)" strokeWidth="8" strokeDasharray={`${stats.percent * 2.26} 226`} strokeLinecap="round" className="transition-all duration-1000" />
-                <defs>
-                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#a855f7" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-lg font-black leading-none">{stats.percent}%</span>
-              </div>
-            </div>
-            <div>
-              <h2 className="font-black italic text-slate-700 uppercase text-sm mb-1">今日進度掌控</h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">已完成 {stats.completed} / 總計 {stats.total} 任務</p>
-            </div>
-          </div>
+          <button onClick={() => { setViewDate(new Date()); setSelectedDate(new Date().toISOString().split('T')[0]); }} className="p-2 bg-white rounded-full shadow-sm border border-slate-100 text-indigo-500">
+            <Icons.Calendar />
+          </button>
         </header>
 
-        {/* 新增任務區 */}
-        <section className="bg-slate-900 rounded-[2.5rem] p-6 mb-8 shadow-2xl">
-          <div className="grid grid-cols-5 gap-2 mb-6">
-            {Object.keys(categoryMap).map(cat => (
-              <button key={cat} onClick={() => setCategory(cat)} className={`flex flex-col items-center py-3 rounded-2xl transition-all ${category === cat ? 'bg-white/10 text-white ring-1 ring-white/20' : 'text-slate-500 hover:text-slate-300'}`}>
-                <span className="text-xl mb-1">{categoryMap[cat].icon}</span>
-                <span className="text-[9px] font-black uppercase">{cat}</span>
-              </button>
-            ))}
+        {/* 智慧週曆規劃區 */}
+        <section className="bg-white rounded-3xl p-4 mb-6 shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-4 px-2">
+            <button onClick={() => shiftWeek(-1)} className="text-slate-300 hover:text-indigo-500 transition-colors"><Icons.ChevronLeft /></button>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              {new Date(currentWeek[0]).getMonth() + 1}月 工作進度週期
+            </span>
+            <button onClick={() => shiftWeek(1)} className="text-slate-300 hover:text-indigo-500 transition-colors"><Icons.ChevronRight /></button>
           </div>
-
-          <div className="space-y-3">
-            <input className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-bold placeholder:text-slate-600 outline-none focus:bg-white/10 transition-all" placeholder="輸入任務標題..." value={taskName} onChange={e => setTaskName(e.target.value)} />
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600"><Icons.Clock /></span>
-                <input type="number" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 pl-10 text-white font-bold outline-none" placeholder="預估小時" value={estTime} onChange={e => setEstTime(e.target.value)} />
-              </div>
-              <button onClick={saveTask} className="bg-indigo-600 text-white px-6 rounded-2xl font-black transition-all active:scale-95 shadow-lg shadow-indigo-500/20">
-                <Icons.Plus />
-              </button>
-            </div>
+          
+          <div className="flex justify-between">
+            {currentWeek.map((dateStr) => {
+              const d = new Date(dateStr);
+              const isSelected = dateStr === selectedDate;
+              const hasTasks = workData[dateStr]?.tasks?.length > 0;
+              const dayNames = ["日", "一", "二", "三", "四", "五", "六"];
+              
+              return (
+                <button 
+                  key={dateStr}
+                  onClick={() => setSelectedDate(dateStr)}
+                  className={`flex flex-col items-center py-3 rounded-2xl min-w-[42px] transition-all ${
+                    isSelected ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'hover:bg-slate-50 text-slate-400'
+                  }`}
+                >
+                  <span className={`text-[9px] font-bold mb-1 ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                    {dayNames[d.getDay()]}
+                  </span>
+                  <span className="text-sm font-black">{d.getDate()}</span>
+                  <div className={`w-1 h-1 rounded-full mt-1.5 ${hasTasks ? (isSelected ? 'bg-white' : 'bg-indigo-400') : 'bg-transparent'}`}></div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
-        {/* 任務清單 */}
+        {/* 任務輸入 */}
+        <section className="bg-white rounded-[2rem] p-6 mb-6 shadow-sm border-t-4 border-indigo-500">
+           {/* ... 保留上一版的任務輸入 UI ... */}
+           <div className="flex gap-2 mb-5">
+            {["緊急", "會議", "其他"].map(t => (
+              <button key={t} onClick={() => setType(t)} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all ${type === t ? `${typeMap[t].color} ring-1 ring-current` : 'bg-slate-50 text-slate-400'}`}>
+                {typeMap[t].icon} {t}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-3">
+            <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none border border-transparent focus:bg-white focus:border-indigo-100 transition-all text-sm" placeholder="輸入任務..." value={taskName} onChange={(e) => setTaskName(e.target.value)} />
+            <button onClick={saveTask} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-md active:scale-95 transition-all">部署今日任務</button>
+          </div>
+        </section>
+
+        {/* 當日任務明細 */}
         <section className="space-y-3">
-          <div className="flex justify-between items-center px-4 mb-2">
-            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic">Task Backlog</h3>
+          <div className="flex justify-between px-4 items-center">
+            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">{selectedDate} LOG</h3>
+            {completionStats > 0 && <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">{completionStats}% DONE</span>}
           </div>
 
-          {dayData.tasks?.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[11px]">今日尚無安排任務</div>
+          {dayData.tasks.length === 0 ? (
+            <div className="text-center py-10 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[10px]">無排定事項</div>
           ) : (
             dayData.tasks.map((task: any) => (
-              <div key={task.id} className={`group bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 transition-all ${task.completed ? 'opacity-60 grayscale' : 'hover:border-indigo-200'}`}>
-                <button 
-                  onClick={() => toggleTask(task.id)}
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${task.completed ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-50 text-slate-200 border border-slate-100'}`}
-                >
-                  <Icons.Check />
-                </button>
-                
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className={`text-[15px] font-black italic ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.name}</span>
-                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${categoryMap[task.category]?.color}`}>{task.category}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                    <span className="flex items-center gap-1"><Icons.Target /> {task.estTime}H</span>
-                    {task.note && <span className="truncate max-w-[120px]">{task.note}</span>}
+              <div key={task.id} className={`bg-white p-4 rounded-2xl shadow-sm border flex items-center justify-between transition-all ${task.completed ? 'opacity-40 border-transparent' : 'border-slate-100'}`}>
+                <div className="flex items-center gap-3 flex-1">
+                  <button onClick={() => toggleTask(task.id)} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${task.completed ? 'bg-indigo-500 text-white' : 'bg-slate-50 border border-slate-200 text-transparent'}`}><Icons.Check /></button>
+                  <div>
+                    <h4 className={`text-sm font-black text-slate-800 ${task.completed ? 'line-through' : ''}`}>{task.name}</h4>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{task.type}</span>
                   </div>
                 </div>
-
-                <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-200 hover:text-rose-500 transition-all">
-                  <Icons.Trash />
-                </button>
+                <button onClick={() => deleteTask(task.id)} className="text-slate-200 hover:text-rose-400 p-2"><Icons.Trash /></button>
               </div>
             ))
           )}
         </section>
-
       </div>
     </main>
   );
