@@ -1,179 +1,200 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, setDoc, onSnapshot } from "firebase/firestore";
 
-// 引入組件
-import MacroTracker from '@/components/MacroTracker';
-import MotionHub from '@/components/MotionHub';
-import WeightTracker from '@/components/WeightTracker';
-import Work from '@/components/Work'; // 新增的專案組件
+// --- SVG Icons ---
+const Icons = {
+  Alert: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>,
+  Users: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>,
+  Check: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>,
+  Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>,
+  Briefcase: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745V20a2 2 0 002 2h14a2 2 0 002-2v-6.745zM16 8V4a2 2 0 00-2-2H10a2 2 0 00-2 2v4H4a2 2 0 00-2 2v3.342c0 .603.492 1.108 1.083 1.201L12 15l8.917-1.457A1.083 1.083 0 0022 12.342V10a2 2 0 00-2-2h-4zM10 4h4v4h-4V4z"></path></svg>,
+};
 
-// --- 1. 定義數據介面 (新增 workData) ---
-interface AppData {
-  macroHistory: Record<string, any>;
-  myFoods: any[];
-  motionData: Record<string, any>;
-  weightHistory: any[];
-  workData: Record<string, any>; // 新增工作數據
-}
+const typeMap: { [key: string]: { icon: string, color: string, label: string } } = {
+  "緊急": { icon: "🚨", color: "bg-rose-50 text-rose-600 border-rose-100", label: "Urgent" },
+  "會議": { icon: "👥", color: "bg-amber-50 text-amber-600 border-amber-100", label: "Meeting" },
+  "其他": { icon: "📝", color: "bg-slate-50 text-slate-600 border-slate-100", label: "Others" },
+};
 
-export default function FitnessDashboard() {
-  // 將 tab 選項擴充 'work'
-  const [activeTab, setActiveTab] = useState<'macro' | 'motion' | 'weight' | 'work'>('work'); 
-  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
+export default function WorkProgressHub() {
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [workData, setWorkData] = useState<any>({});
   
-  const [allData, setAllData] = useState<AppData>({
-    macroHistory: {},
-    myFoods: [],
-    motionData: {},
-    weightHistory: [],
-    workData: {}
-  });
+  const [taskType, setTaskType] = useState('緊急');
+  const [taskName, setTaskName] = useState('');
+  const [time, setTime] = useState('');
+  const [note, setNote] = useState('');
 
   useEffect(() => {
-    // 監聽飲食數據
-    const unsubMacro = onSnapshot(doc(db, "trackers", "yi-ching-data"), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setAllData((prev: AppData) => ({ 
-          ...prev, 
-          macroHistory: data.history || {}, 
-          myFoods: data.myFoods || [] 
-        }));
-      }
+    const unsub = onSnapshot(doc(db, "trackers", "my-work-tracker"), (snap) => {
+      if (snap.exists()) setWorkData(snap.data());
+      setLoading(false);
     });
-
-    // 監聽運動數據
-    const unsubMotion = onSnapshot(doc(db, "trackers", "my-motion-tracker"), (snap) => {
-      if (snap.exists()) {
-        setAllData((prev: AppData) => ({ 
-          ...prev, 
-          motionData: snap.data() 
-        }));
-      }
-    });
-
-    // 監聽工作數據
-    const unsubWork = onSnapshot(doc(db, "trackers", "my-work-tracker"), (snap) => {
-      if (snap.exists()) {
-        setAllData((prev: AppData) => ({ 
-          ...prev, 
-          workData: snap.data() 
-        }));
-      }
-    });
-
-    setLoading(false);
-    return () => { unsubMacro(); unsubMotion(); unsubWork(); };
+    return () => unsub();
   }, []);
 
-  const handleMacroSync = async (newHistory: any, newMyFoods: any[]) => {
-    await setDoc(doc(db, "trackers", "yi-ching-data"), { 
-      history: newHistory, 
-      myFoods: newMyFoods 
-    });
+  const syncData = async (newData: any) => {
+    await setDoc(doc(db, "trackers", "my-work-tracker"), newData);
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center font-black text-indigo-500 italic">
-      <div className="animate-spin text-4xl mb-4 text-indigo-600">🌀</div>
-      <div className="animate-pulse tracking-widest text-sm">SYSTEM_DASHBOARD INITIALIZING...</div>
-    </div>
-  );
+  const dayData = workData[selectedDate] || { tasks: [], dailyGoal: '' };
+
+  const addTask = async () => {
+    if (!taskName) return;
+    const newTask = {
+      id: Date.now(),
+      name: taskName,
+      type: taskType,
+      time: time,
+      note: note,
+      completed: false
+    };
+    const updatedTasks = [...(dayData.tasks || []), newTask];
+    const newData = { ...workData, [selectedDate]: { ...dayData, tasks: updatedTasks } };
+    setWorkData(newData);
+    await syncData(newData);
+    setTaskName(''); setTime(''); setNote('');
+  };
+
+  const toggleComplete = async (taskId: number) => {
+    const updatedTasks = dayData.tasks.map((t: any) => 
+      t.id === taskId ? { ...t, completed: !t.completed } : t
+    );
+    const newData = { ...workData, [selectedDate]: { ...dayData, tasks: updatedTasks } };
+    setWorkData(newData);
+    await syncData(newData);
+  };
+
+  const deleteTask = async (taskId: number) => {
+    const updatedTasks = dayData.tasks.filter((t: any) => t.id !== taskId);
+    const newData = { ...workData, [selectedDate]: { ...dayData, tasks: updatedTasks } };
+    setWorkData(newData);
+    await syncData(newData);
+  };
+
+  const completionRate = useMemo(() => {
+    if (!dayData.tasks?.length) return 0;
+    const done = dayData.tasks.filter((t: any) => t.completed).length;
+    return Math.round((done / dayData.tasks.length) * 100);
+  }, [dayData.tasks]);
+
+  if (loading) return <div className="p-8 text-center animate-pulse font-black text-slate-300">VELOCITY LOADING...</div>;
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] pb-24 font-sans text-slate-900 overflow-x-hidden">
-      
-      {/* 背景裝飾 */}
-      <div className="fixed top-[-10%] right-[-10%] w-64 h-64 bg-indigo-100/40 rounded-full blur-3xl -z-10 animate-pulse"></div>
-      <div className="fixed bottom-[10%] left-[-10%] w-80 h-80 bg-slate-200/30 rounded-full blur-3xl -z-10"></div>
-
-      {/* 標題區塊 */}
-      <header className="pt-16 pb-8 px-8 max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000">
-        <div className="relative">
-          <div className="absolute -left-4 top-0 w-1 h-12 bg-indigo-600 rounded-full"></div>
-          <h1 className="text-4xl font-black tracking-tighter leading-none italic bg-gradient-to-r from-slate-900 via-indigo-800 to-slate-900 bg-clip-text text-transparent">
-            YC_<span className="text-indigo-600">HUB</span>
-          </h1>
-          
-          <div className="flex items-center gap-2 mt-3">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
-            </span>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.4em]">
-              Efficiency & Transformation System
-            </p>
-          </div>
+    <main className="max-w-md mx-auto p-4 pb-24 animate-in fade-in duration-500">
+      {/* Header: 顯示今日進度 */}
+      <header className="mb-6 flex justify-between items-end px-2">
+        <div>
+          <h2 className="text-2xl font-black italic tracking-tighter uppercase">Velocity <span className="text-indigo-600">Hub</span></h2>
+          <p className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Daily Performance Track</p>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-black italic text-indigo-600 leading-none">{completionRate}%</div>
+          <div className="text-[9px] font-bold text-slate-400 uppercase">Completed</div>
         </div>
       </header>
 
-      {/* 導航欄 (新增工作切換) */}
-      <nav className="sticky top-0 z-50 bg-[#F8FAFC]/60 backdrop-blur-xl px-2 py-4">
-        <div className="max-w-md mx-auto flex items-center justify-between bg-white/90 rounded-[2.5rem] p-1.5 shadow-[0_20px_50px_rgba(79,70,229,0.1)] border border-white/50">
-          <NavButton active={activeTab === 'work'} onClick={() => setActiveTab('work')} icon="💻" label="工作" />
-          <NavButton active={activeTab === 'macro'} onClick={() => setActiveTab('macro')} icon="🍲" label="飲食" />
-          <NavButton active={activeTab === 'motion'} onClick={() => setActiveTab('motion')} icon="⚡" label="訓練" />
-          <NavButton active={activeTab === 'weight'} onClick={() => setActiveTab('weight')} icon="⚖️" label="體重" />
+      {/* 快捷輸入區 */}
+      <section className="bg-white rounded-[2rem] p-6 mb-6 shadow-sm border border-slate-100">
+        <div className="flex gap-2 mb-6">
+          {Object.keys(typeMap).map(type => (
+            <button 
+              key={type} 
+              onClick={() => setTaskType(type)}
+              className={`flex-1 py-3 rounded-2xl text-[11px] font-black transition-all border ${taskType === type ? `${typeMap[type].color} border-current shadow-sm` : 'bg-slate-50 text-slate-400 border-transparent'}`}
+            >
+              {typeMap[type].icon} {type}
+            </button>
+          ))}
         </div>
-      </nav>
 
-      {/* 內容區 */}
-      <div className="max-w-md mx-auto px-4 mt-4">
-        <div className="animate-in fade-in zoom-in-95 duration-500">
-          {activeTab === 'work' && (
-             <Work />
-          )}
-
-          {activeTab === 'macro' && (
-            <MacroTracker 
-              history={allData.macroHistory} 
-              myFoods={allData.myFoods} 
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              onSync={handleMacroSync}
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input 
+              className="flex-1 bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:bg-white transition-all text-sm" 
+              placeholder="任務名稱..." 
+              value={taskName} 
+              onChange={(e) => setTaskName(e.target.value)} 
             />
-          )}
-
-          {activeTab === 'motion' && <MotionHub />}
-          {activeTab === 'weight' && <WeightTracker />}
+            <input 
+              className="w-24 bg-slate-50 p-4 rounded-2xl font-bold outline-none text-center text-sm" 
+              placeholder="時間" 
+              value={time} 
+              onChange={(e) => setTime(e.target.value)} 
+            />
+          </div>
+          <textarea 
+            className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-sm min-h-[80px]" 
+            placeholder="補充備註 (選填)..." 
+            value={note} 
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button 
+            onClick={addTask}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-lg active:scale-95 transition-all"
+          >
+            Deploy Task
+          </button>
         </div>
-      </div>
+      </section>
 
-      <footer className="text-center py-16 opacity-40">
-        <div className="inline-block px-4 py-1 border-t border-slate-200">
-          <p className="text-[9px] font-black tracking-[0.6em] uppercase italic text-slate-400">
-            Precision Intelligence 2026
-          </p>
+      {/* 任務列表 */}
+      <section className="space-y-3">
+        <div className="flex justify-between items-center px-4 mb-2">
+           <div className="flex items-center gap-2">
+             <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="text-[10px] font-black uppercase bg-transparent text-slate-400 outline-none cursor-pointer" />
+           </div>
+           <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-tighter">
+             {dayData.tasks?.length || 0} Tasks Active
+           </span>
         </div>
-      </footer>
+
+        {!dayData.tasks?.length ? (
+          <div className="text-center py-12 bg-white rounded-[2rem] border border-dashed border-slate-200 text-slate-300 font-bold italic text-[11px]">
+            今日尚無安排任務，準備好開始了嗎？
+          </div>
+        ) : (
+          dayData.tasks.map((task: any) => (
+            <div 
+              key={task.id} 
+              className={`bg-white p-5 rounded-[1.8rem] shadow-sm border transition-all flex items-center justify-between ${task.completed ? 'opacity-50 border-transparent' : 'border-slate-100 hover:border-indigo-100'}`}
+            >
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => toggleComplete(task.id)}
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${task.completed ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-200 border border-slate-100'}`}
+                >
+                  <Icons.Check />
+                </button>
+                
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-black uppercase ${typeMap[task.type].color} scale-75 origin-left`}>
+                      {task.type}
+                    </span>
+                    {task.time && <span className="text-[10px] font-bold text-slate-400 italic">@ {task.time}</span>}
+                  </div>
+                  <h4 className={`font-black italic text-slate-800 leading-tight ${task.completed ? 'line-through' : ''}`}>
+                    {task.name}
+                  </h4>
+                  {task.note && <p className="text-[10px] font-medium text-slate-400 mt-1">{task.note}</p>}
+                </div>
+              </div>
+
+              <button 
+                onClick={() => deleteTask(task.id)}
+                className="text-slate-200 hover:text-rose-500 p-2 transition-colors"
+              >
+                <Icons.Trash />
+              </button>
+            </div>
+          ))
+        )}
+      </section>
     </main>
-  );
-}
-
-// --- 介面組件 ---
-interface NavButtonProps {
-  active: boolean;
-  onClick: () => void;
-  icon: string;
-  label: string;
-}
-
-function NavButton({ active, onClick, icon, label }: NavButtonProps) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-[1.8rem] transition-all duration-500 ${
-        active 
-          ? 'bg-slate-900 text-white shadow-xl scale-105' 
-          : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-      }`}
-    >
-      <span className={`text-base transition-transform duration-500 ${active ? 'scale-110' : ''}`}>{icon}</span>
-      <span className="text-[9px] font-black uppercase tracking-tighter">{label}</span>
-    </button>
   );
 }
